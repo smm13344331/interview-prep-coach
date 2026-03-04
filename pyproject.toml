@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "interview-prep-coach"
+version = "1.0.0"
+description = "AI-powered interview preparation system for senior software engineers"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Interview Prep Coach Contributors"}
+]
+keywords = ["interview", "preparation", "coding", "java", "spring", "kubernetes", "docker", "claude"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+    "Topic :: Software Development",
+]
+
+dependencies = [
+    "mcp>=0.1.0",
+    "click>=8.1.0",
+    "importlib-resources>=5.0.0; python_version < '3.9'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/interview-prep-coach"
+Repository = "https://github.com/yourusername/interview-prep-coach"
+Issues = "https://github.com/yourusername/interview-prep-coach/issues"
+
+[project.scripts]
+interview-prep-coach = "interview_prep_coach.cli:cli"
+interview-prep-coach-server = "interview_prep_coach.server:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["interview_prep_coach*"]
+
+[tool.setuptools.package-data]
+interview_prep_coach = ["data/*.md", "data/*.json"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
