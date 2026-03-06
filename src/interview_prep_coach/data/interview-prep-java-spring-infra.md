@@ -1574,6 +1574,8 @@ Horizontal Scaling:
 
 ## Behavioral & Architecture Questions
 
+### General Interview Questions
+
 **Q: Describe a time you optimized application performance**
 Template answer:
 - **Situation:** Describe the performance issue

@@ -24,40 +24,61 @@ This is an AI-powered technical interview preparation system packaged as a distr
 ┌─────────────────────────────────────────────────────────────┐
 │ MCP Server (interview-prep-coach-server)                     │
 │ - 19 tools organized in 4 categories                         │
-│ - Stateless, data via Core modules                          │
+│ - Stateless, database-backed via DatabaseManager            │
 └─────────────────────────────────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ Core Modules                                                 │
-│ - ProgressTracker: learning state                           │
-│ - ImprovementLogger: material quality tracking              │
-│ - QuestionParser: markdown question parsing                 │
-│ - MaterialEditor: copy-on-write material system             │
+│ - DatabaseManager: SQLite with schema management            │
+│ - PluginManager: material source plugin lifecycle           │
+│ - ProgressTracker: learning state tracking                  │
+│ - ImprovementLogger: quality tracking                       │
+│ - QuestionParser: question retrieval from database          │
+│ - MaterialEditor: material CRUD operations                  │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Plugin System                                                │
+│ - MaterialPlugin base class: plugin interface               │
+│ - PluginManager: install, enable, disable, load             │
+│ - MarkdownImporter: parse markdown to database              │
+│ - Bundled plugins: JavaSpringPlugin                         │
+│ - Extensible: custom plugins for APIs, scrapers, etc.       │
 └─────────────────────────────────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ Data Layer                                                   │
-│ - XDG-compliant paths (~/.local/share/interview-prep-coach) │
-│ - Copy-on-write for bundled material                        │
-│ - JSON for progress and improvements                         │
+│ - SQLite database: interview_prep.db                        │
+│   * materials: material sources (plugins, bundled, user)    │
+│   * questions: all interview questions with FTS5 search     │
+│   * progress: per-question attempt tracking                 │
+│   * improvements: material quality issues                   │
+│   * sessions: learning session history                      │
+│   * plugins: plugin registry                                │
+│ - XDG-compliant: ~/.local/share/interview-prep-coach/       │
+│ - Schema versioning with migrations                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Design Patterns
 
-**1. Copy-on-Write Material System**
+**1. Plugin-Based Material System**
 ```python
-# Bundled material (read-only) in package installation
-get_bundled_questions_file() -> Path
+# Define a material plugin
+class MyPlugin(MaterialPlugin):
+    @property
+    def plugin_id(self) -> str:
+        return "my-plugin"
 
-# User material (writable) in data directory
-get_user_questions_file() -> Path
+    def import_material(self, db: DatabaseManager, material_id: str) -> bool:
+        # Import questions into database
+        pass
 
-# Smart selector: prefers user copy over bundled
-get_questions_file() -> Path
+# Users can switch between material sources
+db.execute("UPDATE materials SET is_active = TRUE WHERE id = ?", (material_id,))
 ```
 
-**Why:** Preserves original material, allows user customizations, survives package updates.
+**Why:** Flexible material sources (bundled, files, APIs), easy to extend, survives package updates.
 
 **2. MCP-Native Operations**
 ```python
@@ -80,28 +101,69 @@ progress = await call_tool("interview-prep-coach:get-progress")
 
 **Why:** Simple, testable, follows MCP patterns.
 
+**3. Database-First Architecture**
+```python
+# All state in SQLite database
+db = DatabaseManager()
+db.initialize_schema()
+
+# Questions, progress, improvements all in database
+questions = db.fetchall("SELECT * FROM questions WHERE material_id = ?", (id,))
+```
+
+**Why:** Single source of truth, atomic transactions, powerful queries, FTS search.
+
+**4. SQLite Compatibility Shim (CVE-2022-35737 Mitigation)**
+```python
+# All modules use _sqlite_compat instead of direct sqlite3 import
+from .._sqlite_compat import sqlite3
+
+# This automatically uses pysqlite3-binary if available
+# Falls back to system sqlite3 with version check
+```
+
+**Why:** System SQLite 3.37.x has CVE-2022-35737 causing FTS5 corruption. Using `pysqlite3-binary` bundles SQLite 3.42+ in a wheel package, eliminating the vulnerability.
+
+**Technical Details:**
+- `pysqlite3-binary` is a pre-compiled wheel with bundled libsqlite3
+- Works across all platforms (Linux, macOS, Windows)
+- Drop-in replacement for `sqlite3` module
+- No compilation or system dependencies needed
+- Automatically used by importing from `_sqlite_compat`
+
 ## Code Structure
 
 ```
 src/interview_prep_coach/
 ├── cli.py                      # Entry point: interview-prep-coach command
 ├── server.py                   # Entry point: interview-prep-coach-server (MCP)
+├── _sqlite_compat.py           # SQLite compatibility shim (CVE mitigation)
+├── _version_check.py           # Python version checks
 │
 ├── config/
 │   ├── paths.py               # ALL path logic here (XDG-compliant)
 │   └── installer.py           # Claude Code integration (skill + MCP)
 │
-├── core/                      # Business logic (no I/O dependencies)
-│   ├── progress.py            # ProgressTracker class
-│   ├── improvements.py        # ImprovementLogger class
-│   ├── questions.py           # QuestionParser class
-│   └── material_editor.py     # MaterialEditor class
+├── core/                      # Business logic
+│   ├── database.py            # DatabaseManager: SQLite operations
+│   ├── schema.py              # Schema definitions and versioning
+│   ├── plugin_manager.py      # PluginManager: plugin lifecycle
+│   ├── progress.py            # ProgressTracker: learning state tracking
+│   ├── improvements.py        # ImprovementLogger: quality tracking
+│   ├── questions.py           # QuestionParser: question retrieval
+│   └── material_editor.py     # MaterialEditor: material management
+│
+├── plugins/                   # Plugin system
+│   ├── base.py                # MaterialPlugin base class
+│   ├── importers.py           # MarkdownImporter utility
+│   └── bundled/
+│       ├── __init__.py
+│       └── java_spring_importer.py  # JavaSpringPlugin
 │
 └── data/                      # Bundled with package (read-only)
     ├── interview-coach-agent-prompt.md      # Agent instructions
     ├── interview-prep-java-spring-infra.md  # Default questions
-    ├── learning-progress-template.json
-    └── improvement-log-template.json
+    └── schema.sql                           # Database schema SQL
 ```
 
 ### Module Responsibilities
@@ -116,6 +178,18 @@ src/interview_prep_coach/
 - Instantiates Core modules
 - Thin wrapper: validates input → calls Core → formats output
 - No business logic
+
+**_sqlite_compat.py**
+- SQLite compatibility shim for CVE-2022-35737
+- Automatically uses pysqlite3 (bundled SQLite 3.42+) if available
+- Falls back to system sqlite3 with version check
+- Exports `sqlite3` for use by all modules
+- Imported first by all modules needing database access
+
+**_version_check.py**
+- Python version checks (3.10+ required)
+- Called at entry points (cli.py, server.py)
+- SQLite checking delegated to _sqlite_compat
 
 **config/paths.py**
 - Single source of truth for ALL file paths
@@ -252,26 +326,28 @@ progress_file = get_progress_file()
 progress_file = Path.home() / '.local/share/interview-prep-coach/learning-progress.json'
 ```
 
-### Resource Access
+### Database Access
+
+**Always use DatabaseManager:**
+```python
+from interview_prep_coach.core import DatabaseManager
+
+db = DatabaseManager()
+# All data access through database
+questions = db.fetchall("SELECT * FROM questions WHERE material_id = ?", (id,))
+```
+
+### Plugin Pattern
 
 **For bundled files:**
 ```python
 from interview_prep_coach.config.paths import get_bundled_questions_file
+from interview_prep_coach.plugins.importers import MarkdownImporter
 
-# Python 3.9+ compatible
-questions_file = get_bundled_questions_file()
-with open(questions_file, 'r') as f:
-    content = f.read()
-```
-
-### Copy-on-Write Trigger
-
-```python
-from interview_prep_coach.config.paths import ensure_editable_material_exists
-
-# Triggers copy if needed
-user_material = ensure_editable_material_exists()
-# Now safe to modify
+# Import into database
+bundled_file = get_bundled_questions_file()
+importer = MarkdownImporter()
+count = importer.import_to_db(db, material_id, bundled_file)
 ```
 
 ### MCP Tool Pattern
@@ -299,21 +375,29 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
 
 ### Adding New Question Material
 
-**Option 1: Replace bundled material**
-1. Edit `src/interview_prep_coach/data/interview-prep-java-spring-infra.md`
-2. Keep markdown format:
-```markdown
-## Section Name
+**Option 1: Create a new plugin**
+```python
+# src/interview_prep_coach/plugins/bundled/my_plugin.py
+class MyTopicPlugin(MaterialPlugin):
+    @property
+    def plugin_id(self) -> str:
+        return "my-topic"
 
-### Subsection Name
-
-**Q: Question text?**
-Answer text...
+    def import_material(self, db: DatabaseManager, material_id: str) -> bool:
+        # Load your questions from file, API, etc.
+        importer = MarkdownImporter()
+        return importer.import_to_db(db, material_id, my_file_path)
 ```
 
-**Option 2: User customization**
-1. User edits `~/.local/share/interview-prep-coach/interview-prep-material.md`
-2. System automatically uses it
+**Option 2: Import via CLI**
+```bash
+interview-prep-coach materials import my-questions.md --id my-topic --name "My Topic"
+interview-prep-coach materials activate my-topic
+```
+
+**Option 3: Edit bundled material**
+1. Edit `src/interview_prep_coach/data/interview-prep-java-spring-infra.md`
+2. Rebuild and reinstall package
 
 ### Adding New Learning Modes
 
@@ -324,29 +408,21 @@ Answer text...
 
 ### Adding New Improvement Types
 
-1. Add to `core/improvements.py`:
-```python
-"new_type": {
-    "count": 0,
-    "description": "Description here"
-}
+1. Update database schema in `data/schema.sql` if needed (add to CHECK constraint)
+
+2. Update agent prompt in `data/interview-coach-agent-prompt.md`:
+```markdown
+| `new_type` | When to use this type |
 ```
 
-2. Add handler in `core/material_editor.py` → `apply_improvement()`:
-```python
-elif improvement_type == 'new_type':
-    # Parse and apply logic
-    return True, "Applied successfully"
-```
-
-3. Update agent prompt to know when to use it
+3. Improvements are stored in database and applied via MaterialEditor
 
 ### Adding Analytics
 
 Good places to add:
-- `core/progress.py` → track additional metrics
-- Add new MCP tool: `get-analytics`
-- Store in progress.json under new key
+- `core/progress.py` → add methods to query database
+- Add new MCP tool: `get-analytics` in `server.py`
+- Query from `progress` and `sessions` tables
 - Display in CLI: `interview-prep-coach status`
 
 ## Common Tasks
@@ -367,13 +443,13 @@ This file becomes the system prompt. Edit it to change:
 
 **File:** `src/interview_prep_coach/data/interview-prep-java-spring-infra.md`
 
-This is the bundled question bank. Edit to:
+This is the bundled question bank (imported via JavaSpringPlugin). Edit to:
 - Add more questions
 - Update for new technologies
 - Fix errors
 - Change focus areas
 
-**After editing:** Rebuild and reinstall.
+**After editing:** Rebuild and reinstall. The plugin will re-import on fresh installs.
 
 ### Add CLI Command
 
@@ -415,13 +491,18 @@ Currently `/prep`. To change:
 **Issue:** `importlib.resources` API changed in Python 3.9+
 **Solution:** `paths.py` handles both old and new API
 
-### 5. Copy-on-Write Timing
-**Issue:** User copy only created on first edit
-**Solution:** This is intentional! Don't pre-create it.
+### 5. Database Schema Changes
+**Issue:** If schema changes after release, existing databases break
+**Solution:** Add migration script or bump schema version and handle in DatabaseManager
 
-### 6. Progress File Format
-**Issue:** If structure changes, old progress files break
-**Solution:** Add migration logic in `ProgressTracker.__init__()` or document breaking change
+### 6. Claude MCP Commands Hanging
+**Issue:** `claude mcp add/remove/get/list` commands hang indefinitely when called via subprocess
+**Solution:** Installer directly manipulates `~/.claude.json` instead of calling CLI commands
+**Details:**
+- The `.claude.json` file is in the home directory (`~/.claude.json`, not `~/.claude/.claude.json`)
+- Project configurations are under the `projects` key (not `projectConfigs`)
+- Structure: `config['projects'][project_path]['mcpServers']['interview-prep-coach']`
+- See `installer.py` methods: `_read_claude_config()`, `_write_claude_config()`, `_configure_mcp_server()`, `_remove_mcp_server()`
 
 ## File Locations Reference
 
@@ -448,9 +529,7 @@ interview-prep-coach/              # Git repo
 └── settings.json                 # MCP server config
 
 ~/.local/share/interview-prep-coach/
-├── learning-progress.json        # User progress
-├── improvement-log.json          # Logged improvements
-└── interview-prep-material.md    # User's editable copy (if modified)
+└── interview-prep.db             # SQLite database (all data)
 ```
 
 ## Debugging Tips
@@ -479,18 +558,21 @@ tail -f ~/.claude/debug/latest
 
 ### Test core modules directly
 ```python
-from interview_prep_coach.core import ProgressTracker
-tracker = ProgressTracker()
-progress = tracker.load_progress()
-print(progress)
+from interview_prep_coach.core import DatabaseManager, ProgressTracker
+
+db = DatabaseManager()
+tracker = ProgressTracker(db)
+stats = tracker.get_statistics('java-spring-bundled')
+print(stats)
 ```
 
-### Test material editor
+### Test database
 ```python
-from interview_prep_coach.core import MaterialEditor
-editor = MaterialEditor()
-info = editor.get_material_info()
-print(f"Using: {info['source']}")
+from interview_prep_coach.core import DatabaseManager
+
+db = DatabaseManager()
+materials = db.fetchall("SELECT * FROM materials")
+print(materials)
 ```
 
 ## Version Management
@@ -508,9 +590,9 @@ print(f"Using: {info['source']}")
 ### Breaking Changes
 
 If changing:
-- Progress file format → Add migration or bump major version
+- Database schema → Add migration or bump major version
 - MCP tool signatures → Update agent prompt + bump minor version
-- Question file format → Add backward compat or bump major version
+- Plugin interface → Add backward compat or bump major version
 
 ## Security Considerations
 
@@ -522,21 +604,23 @@ If changing:
 
 ## Performance Notes
 
-- Question parsing: ~20ms (cached after first parse)
-- Progress save: ~5-10ms (JSON write)
-- Material edit: ~10-20ms (file write)
-- First material edit: ~50ms (copies bundled file)
+- Database queries: ~1-5ms (indexed)
+- Question search (FTS5): ~10-20ms
+- Progress tracking: ~5ms (INSERT)
+- Material import: ~100-500ms (bulk INSERT with transaction)
 
 ## Future Enhancements Ideas
 
 - [ ] Export progress as PDF report
-- [ ] Spaced repetition scheduling
-- [ ] Multi-user support with sync
-- [ ] Web dashboard for progress
-- [ ] Plugin system for custom material sources
+- [ ] Spaced repetition scheduling algorithm
+- [ ] Multi-user support with database sync
+- [ ] Web dashboard for progress visualization
+- [ ] More bundled plugins (Python, System Design, etc.)
+- [ ] API-based plugins (fetch questions from LeetCode, HackerRank)
 - [ ] Integration with Anki/flashcard apps
 - [ ] Voice mode for practice
-- [ ] Company-specific question banks
+- [ ] Company-specific question bank plugins
+- [ ] Schema migrations for version upgrades
 
 ## Getting Help
 

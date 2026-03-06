@@ -1,0 +1,30 @@
+# Test Docker container for Interview Prep Coach installer
+FROM ubuntu:22.04
+
+# Install prerequisites
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a test user (non-root)
+RUN useradd -m -s /bin/bash testuser
+
+# Switch to test user
+USER testuser
+WORKDIR /home/testuser
+
+# Copy the installer package
+COPY --chown=testuser:testuser interview-prep-coach-1.0.0-linux-installer.tar.gz .
+
+# Extract and prepare
+RUN tar -xzf interview-prep-coach-1.0.0-linux-installer.tar.gz
+
+# Set working directory
+WORKDIR /home/testuser/interview-prep-coach
+
+# Make installer executable
+RUN chmod +x install.sh
+
+# Default command shows help
+CMD ["./install.sh", "help"]

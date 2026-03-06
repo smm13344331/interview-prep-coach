@@ -1,16 +1,16 @@
 """Installation logic for Claude Code integration."""
 
 import json
+import os
 import shutil
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 from .paths import (
     get_claude_dir,
     get_claude_skills_dir,
     get_claude_mcp_config,
     get_agent_prompt_file,
-    ensure_data_files_exist,
 )
 
 
@@ -44,17 +44,53 @@ class ClaudeCodeInstaller:
         return is_fully_installed, details
 
     def _is_mcp_configured(self) -> bool:
-        """Check if MCP server is configured in settings.json."""
-        if not self.settings_file.exists():
+        """
+        Check if MCP server is configured.
+
+        Directly reads .claude.json to avoid hanging claude mcp commands.
+        """
+        try:
+            config = self._read_claude_config()
+            if not config:
+                return False
+
+            # Get current project path
+            cwd = os.getcwd()
+
+            # Check if project config exists (use 'projects' key, not 'projectConfigs')
+            project_config = config.get('projects', {}).get(cwd)
+            if not project_config:
+                return False
+
+            # Check if our MCP server is configured
+            mcp_servers = project_config.get('mcpServers', {})
+            return 'interview-prep-coach' in mcp_servers
+
+        except Exception:
             return False
+
+    def _read_claude_config(self) -> Optional[Dict[str, Any]]:
+        """Read .claude.json configuration file."""
+        # .claude.json is in the home directory, not in .claude/
+        claude_json = Path.home() / '.claude.json'
+        if not claude_json.exists():
+            return None
 
         try:
-            with open(self.settings_file, 'r') as f:
-                settings = json.load(f)
+            with open(claude_json, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return None
 
-            return 'mcpServers' in settings and 'interview-prep-coach' in settings['mcpServers']
-        except (json.JSONDecodeError, IOError):
-            return False
+    def _write_claude_config(self, config: Dict[str, Any]) -> None:
+        """Write .claude.json configuration file."""
+        # .claude.json is in the home directory, not in .claude/
+        claude_json = Path.home() / '.claude.json'
+
+        # Write with pretty formatting to match Claude's style
+        with open(claude_json, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+            f.write('\n')  # Add trailing newline
 
     def install(self, force: bool = False) -> Dict[str, Any]:
         """
@@ -104,13 +140,8 @@ class ClaudeCodeInstaller:
             results['errors'].append(f"Failed to configure MCP server: {e}")
             results['steps']['mcp_server'] = False
 
-        # Step 3: Initialize data directory
-        try:
-            ensure_data_files_exist()
-            results['steps']['data_files'] = True
-        except Exception as e:
-            results['errors'].append(f"Failed to initialize data files: {e}")
-            results['steps']['data_files'] = False
+        # Step 3: Database initialization (handled in cli.py)
+        results['steps']['data_files'] = True
 
         # Overall success
         results['success'] = len(results['errors']) == 0
@@ -143,48 +174,47 @@ arguments:
 
 {agent_prompt}
 
-# MCP Tools Available
+---
 
-You have access to **19 MCP tools** from the `interview-prep-coach` server:
+## MCP Tools Discovery
 
-## Question Management
-- **get-next-question** - Get next question in sequence
-- **get-question** - Get specific question by location
-- **parse-questions** - Parse all questions in section/subsection
-- **search-questions** - Search questions by keyword
-- **get-sections** - List all available sections
-- **get-subsections** - List subsections for a section
+You have access to MCP tools from the `interview-prep-coach` server. Claude Code automatically discovers these tools on-demand through semantic search.
 
-## Progress Tracking
-- **get-progress** - Load current learning progress
-- **update-progress** - Update progress after each question
-- **get-weak-areas** - Get weak areas (<60% accuracy)
-- **get-statistics** - Get overall statistics
+**Tool Categories Available:**
+- **Session Management**: Starting and ending practice sessions
+- **Question Retrieval**: Getting questions by section, subsection, or search
+- **Progress Tracking**: Recording answers and viewing statistics
+- **Weak Area Analysis**: Identifying topics that need more practice
+- **Material Editing**: Adding, editing, or deleting questions
+- **Improvement Logging**: Recording and tracking material quality issues
+- **Material Management**: Importing, cloning, activating different question sets
 
-## Improvement System
-- **log-improvement** - Record material quality issues
-- **get-improvements** - View pending/implemented improvements
+**How to Use Tools:**
+Use Claude Code's natural tool discovery - simply describe what you need to do (e.g., "start a session", "get next question", "track this answer") and the appropriate tools will be found automatically through semantic search. The MCP server provides detailed descriptions for each tool.
 
-## Material Editing
-- **apply-improvement** - Apply logged improvement to material
-- **edit-question** - Directly edit question/answer
-- **add-question** - Add new question to material
-- **refresh-material** - Reload after edits
-- **get-material-info** - Check material source/status
-- **reset-material** - Revert to original material
-- **export-material** - Backup material to file
+**Key Workflow Patterns:**
+1. **Session Start**: `start-session` → `get-statistics` → present options
+2. **Question Flow**: `get-next-question` → user answers → `update-progress` → feedback
+3. **Weak Areas**: `get-weak-areas` → `get-all-questions` → targeted practice
+4. **Material Quality**: notice issue → `log-improvement` → `edit-question` → `mark-improvement-implemented`
 
-# Usage
+---
+
+## Usage Examples
 
 Start with `/prep` or `/prep [mode] [topic]`
 
-Examples:
-- `/prep` - Continue from last session
-- `/prep weak` - Focus on weak areas
+**Session Modes:**
+- `/prep` - Continue from last session (recommended)
+- `/prep weak` - Focus on weak areas (<60% accuracy)
 - `/prep mock` - Mock interview mode (random questions)
 - `/prep section [name]` - Practice specific section
 
-All tool names must be prefixed with `interview-prep-coach:` when calling them.
+**During Session:**
+- Answer questions naturally
+- Type "hint" for a hint
+- Type "skip" to skip
+- Type "explain" to see the answer
 """
 
         # Write skill file
@@ -192,30 +222,51 @@ All tool names must be prefixed with `interview-prep-coach:` when calling them.
             f.write(skill_content)
 
     def _configure_mcp_server(self) -> None:
-        """Configure MCP server in settings.json."""
-        # Load or create settings
-        if self.settings_file.exists():
-            try:
-                with open(self.settings_file, 'r') as f:
-                    settings = json.load(f)
-            except json.JSONDecodeError:
-                settings = {}
-        else:
-            settings = {}
+        """
+        Configure MCP server by directly modifying .claude.json.
 
-        # Add MCP server configuration
-        if 'mcpServers' not in settings:
-            settings['mcpServers'] = {}
+        This avoids the hanging claude mcp commands and provides direct control.
+        """
+        # Read current config
+        config = self._read_claude_config()
+        if config is None:
+            raise RuntimeError(f"Could not read Claude config file: {Path.home() / '.claude.json'}")
 
-        settings['mcpServers']['interview-prep-coach'] = {
+        # Get current project path
+        cwd = os.getcwd()
+
+        # Ensure projects exists (use 'projects' key, not 'projectConfigs')
+        if 'projects' not in config:
+            config['projects'] = {}
+
+        # Ensure current project exists in config
+        if cwd not in config['projects']:
+            config['projects'][cwd] = {
+                'allowedTools': [],
+                'mcpContextUris': [],
+                'mcpServers': {},
+                'enabledMcpjsonServers': [],
+                'disabledMcpjsonServers': [],
+                'hasTrustDialogAccepted': False,
+            }
+
+        # Get project config
+        project_config = config['projects'][cwd]
+
+        # Ensure mcpServers exists
+        if 'mcpServers' not in project_config:
+            project_config['mcpServers'] = {}
+
+        # Add our MCP server configuration
+        project_config['mcpServers']['interview-prep-coach'] = {
+            'type': 'stdio',
             'command': 'interview-prep-coach-server',
             'args': [],
-            'description': 'Interview preparation system with progress tracking and continuous improvement'
+            'env': {}
         }
 
-        # Write settings
-        with open(self.settings_file, 'w') as f:
-            json.dump(settings, f, indent=2)
+        # Write back to file
+        self._write_claude_config(config)
 
     def uninstall(self, remove_data: bool = False) -> Dict[str, Any]:
         """
@@ -275,21 +326,35 @@ All tool names must be prefixed with `interview-prep-coach:` when calling them.
         return results
 
     def _remove_mcp_server(self) -> None:
-        """Remove MCP server from settings.json."""
-        if not self.settings_file.exists():
-            return
+        """
+        Remove MCP server by directly modifying .claude.json.
 
+        This avoids the hanging claude mcp commands.
+        """
         try:
-            with open(self.settings_file, 'r') as f:
-                settings = json.load(f)
+            # Read current config
+            config = self._read_claude_config()
+            if config is None:
+                return  # Nothing to remove
 
-            if 'mcpServers' in settings and 'interview-prep-coach' in settings['mcpServers']:
-                del settings['mcpServers']['interview-prep-coach']
+            # Get current project path
+            cwd = os.getcwd()
 
-                # Write updated settings
-                with open(self.settings_file, 'w') as f:
-                    json.dump(settings, f, indent=2)
-        except (json.JSONDecodeError, IOError):
+            # Check if project config exists (use 'projects' key, not 'projectConfigs')
+            if 'projects' not in config or cwd not in config['projects']:
+                return  # Nothing to remove
+
+            project_config = config['projects'][cwd]
+
+            # Remove our MCP server if it exists
+            if 'mcpServers' in project_config:
+                project_config['mcpServers'].pop('interview-prep-coach', None)
+
+            # Write back to file
+            self._write_claude_config(config)
+
+        except Exception:
+            # Silently ignore errors - server might not exist
             pass
 
     def get_status(self) -> Dict[str, Any]:
@@ -301,17 +366,17 @@ All tool names must be prefixed with `interview-prep-coach:` when calling them.
         """
         is_installed, details = self.is_installed()
 
-        from .paths import get_data_dir, get_progress_file, get_improvement_file
+        from .paths import get_data_dir, get_database_file
 
         data_dir = get_data_dir()
-        progress_file = get_progress_file()
-        improvement_file = get_improvement_file()
+        db_file = get_database_file()
 
         return {
             'installed': is_installed,
             'components': details,
             'data_directory': str(data_dir),
-            'data_initialized': progress_file.exists() and improvement_file.exists(),
+            'data_initialized': db_file.exists(),
+            'database_location': str(db_file),
             'skill_location': str(self.skills_dir / 'prep' / 'SKILL.md'),
             'settings_location': str(self.settings_file)
         }

@@ -18,11 +18,12 @@ interview-prep-coach install
 ## What Is This?
 
 An intelligent interview preparation system that:
-- **Adapts to any technical topic** - Not limited to specific technologies
+- **Plugin-based materials** - Easy to add custom topics, import from files or APIs
+- **Database-backed** - Fast searches, persistent tracking, powerful queries
 - **Tracks your progress** - Remembers everything across sessions
 - **Identifies weak areas** - Focuses practice where you need it
 - **Self-improves** - AI coach can enhance the questions based on usage
-- **Multiple modes** - Continue, weak areas, mock interview, or section-specific
+- **Multiple material sources** - Switch between different question banks
 
 ## Features
 
@@ -68,15 +69,22 @@ An intelligent interview preparation system that:
 ## Installation
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.10 or higher
 - Claude Code (latest version)
 - pip
+
+**Note**: SQLite 3.38+ is required to avoid CVE-2022-35737. This is handled automatically via `pysqlite3-binary` dependency - no manual configuration needed.
 
 ### Install Package
 
 ```bash
 pip install interview-prep-coach
 ```
+
+This automatically installs:
+- Core package with CLI and MCP server
+- `pysqlite3-binary` (bundles SQLite 3.42+ for security)
+- All required dependencies
 
 ### Integrate with Claude Code
 
@@ -207,22 +215,28 @@ The coach uses these tools automatically:
 
 ### Data Storage
 
-All your data is stored locally:
+All your data is stored locally in a SQLite database:
 
 ```
 ~/.local/share/interview-prep-coach/
-├── learning-progress.json       # Your progress
-├── improvement-log.json         # Material improvements
-└── interview-prep-material.md   # Editable copy (if you modify material)
+└── interview-prep.db            # SQLite database (all data)
 ```
 
-**Bundled material** (read-only):
+The database contains:
+- **materials** - Question sources (bundled, imported, cloned)
+- **questions** - All questions with full-text search
+- **progress** - Per-question attempt history
+- **improvements** - Material quality tracking
+- **sessions** - Learning session history
+- **plugins** - Plugin registry
+
+**Bundled questions** (imported on first run):
 ```
 /usr/local/lib/.../interview_prep_coach/data/
 └── interview-prep-java-spring-infra.md  # Default questions (45KB)
 ```
 
-**Copy-on-write**: First edit creates user copy. Package updates don't overwrite your customizations.
+**Plugin system**: Add custom materials via plugins or file import. Switch between materials anytime.
 
 ## Material Improvement System
 
@@ -260,36 +274,67 @@ The coach can improve its own teaching material!
 
 ### You Can Customize
 
-Since the system uses copy-on-write:
-- Add your own questions
-- Modify existing ones
-- Focus on your tech stack
-- All changes persist across package updates
+With the plugin and material system:
+- Import your own questions from markdown files
+- Clone and modify existing materials
+- Create custom plugins for different sources
+- Switch between material banks anytime
+- All changes persist in the database
 
 ## CLI Commands
 
 ```bash
+# Installation
 interview-prep-coach install       # Install to Claude Code
 interview-prep-coach uninstall     # Remove from Claude Code
 interview-prep-coach status        # Show installation & progress
-interview-prep-coach reset         # Clear all progress
 interview-prep-coach info          # System information
+
+# Progress management
+interview-prep-coach reset         # Clear progress for active material
+
+# Material management
+interview-prep-coach materials list              # List all materials
+interview-prep-coach materials info <id>         # Show material details
+interview-prep-coach materials activate <id>     # Switch active material
+interview-prep-coach materials import <file>     # Import from file
+interview-prep-coach materials clone <id> <new>  # Clone for customization
+interview-prep-coach materials export -o <file>  # Export to markdown
+interview-prep-coach materials delete <id>       # Delete material
 ```
 
 ## Customization
 
-### Use Your Own Material
+### Import Your Own Material
 
 ```bash
-# Export template
-interview-prep-coach export-material --path /tmp/template.md
+# Create a markdown file with your questions (see format below)
+# Then import it:
+interview-prep-coach materials import my-questions.md \
+  --id my-topic \
+  --name "My Custom Topic"
 
-# Edit template.md with your questions
+# Activate it:
+interview-prep-coach materials activate my-topic
 
-# Copy to user data directory
-cp /tmp/template.md ~/.local/share/interview-prep-coach/interview-prep-material.md
+# Start practicing:
+/prep
+```
 
-# Restart session - coach now uses your material!
+### Clone and Modify Existing Material
+
+```bash
+# Clone bundled material
+interview-prep-coach materials clone java-spring-bundled my-java \
+  --name "My Java Questions"
+
+# Activate your copy
+interview-prep-coach materials activate my-java
+
+# Edit questions via the coach during sessions or export/edit/re-import
+interview-prep-coach materials export -o /tmp/my-java.md
+# Edit the file...
+interview-prep-coach materials import /tmp/my-java.md --id my-java-v2 --name "My Java V2"
 ```
 
 ### Question Format
@@ -308,7 +353,27 @@ Answer text here with explanations...
 Another answer...
 ```
 
+The importer automatically parses this format and stores questions in the database.
+
 ## Troubleshooting
+
+### SQLite Version Error
+
+If you see an error about SQLite version or CVE-2022-35737:
+
+```bash
+# Reinstall to ensure pysqlite3-binary is properly installed
+pip install --force-reinstall interview-prep-coach
+
+# Or just reinstall the SQLite package
+pip install --force-reinstall pysqlite3-binary
+```
+
+Verify the fix:
+```bash
+python -c "from interview_prep_coach._sqlite_compat import sqlite3; print(f'SQLite: {sqlite3.sqlite_version}')"
+# Should show: SQLite: 3.42.0 or higher
+```
 
 ### `/prep` command not found
 
@@ -332,17 +397,24 @@ cat ~/.claude/settings.json | grep interview-prep-coach
 
 ### Progress not saving
 
-Check data directory permissions:
+Check database permissions:
 ```bash
-ls -la ~/.local/share/interview-prep-coach/
+ls -la ~/.local/share/interview-prep-coach/interview-prep.db
+```
+
+If database is corrupted:
+```bash
+rm ~/.local/share/interview-prep-coach/interview-prep.db
+# Restart - will recreate database
 ```
 
 ### Reset everything
 
 ```bash
-interview-prep-coach reset          # Clear progress
-interview-prep-coach uninstall      # Remove from Claude Code
-pip uninstall interview-prep-coach  # Remove package
+interview-prep-coach reset                      # Clear progress (keeps materials)
+interview-prep-coach materials delete <id>      # Delete specific material
+interview-prep-coach uninstall --remove-data    # Remove everything including database
+pip uninstall interview-prep-coach              # Remove package
 ```
 
 ## Development
@@ -374,13 +446,22 @@ interview-prep-coach/
 │   │   ├── paths.py        # File path management
 │   │   └── installer.py    # Claude Code integration
 │   ├── core/
-│   │   ├── progress.py     # Progress tracking
-│   │   ├── improvements.py # Improvement logging
-│   │   ├── questions.py    # Question parsing
-│   │   └── material_editor.py  # Material modification
+│   │   ├── database.py     # DatabaseManager (SQLite)
+│   │   ├── schema.py       # Database schema definitions
+│   │   ├── progress.py     # ProgressTracker
+│   │   ├── improvements.py # ImprovementLogger
+│   │   ├── questions.py    # QuestionParser
+│   │   ├── material_editor.py    # MaterialEditor
+│   │   └── plugin_manager.py     # PluginManager
+│   ├── plugins/
+│   │   ├── base.py         # MaterialPlugin base class
+│   │   ├── importers.py    # MarkdownImporter, JSONImporter
+│   │   └── bundled/        # Bundled plugins
+│   │       └── java_spring_importer.py
 │   └── data/               # Bundled data
 │       ├── interview-coach-agent-prompt.md
-│       └── interview-prep-java-spring-infra.md
+│       ├── interview-prep-java-spring-infra.md
+│       └── schema.sql
 └── tests/
 ```
 
@@ -389,11 +470,12 @@ interview-prep-coach/
 ### Built With
 - [MCP (Model Context Protocol)](https://github.com/anthropics/mcp) - Claude integration
 - [Click](https://click.palletsprojects.com/) - CLI interface
-- [Pydantic](https://pydantic.dev/) - Data validation
+- SQLite 3.42+ - Database with FTS5 full-text search (via `pysqlite3-binary`)
 
 ### Python Support
-- Python 3.8+
+- Python 3.10+
 - Cross-platform (Linux, macOS, Windows/WSL)
+- Bundled SQLite 3.42+ (no system dependency)
 
 ### License
 MIT License - see LICENSE file
@@ -413,18 +495,25 @@ A: Yes, each user has their own progress file. Data is per-user account.
 A: More interactive! The AI coach evaluates understanding, teaches concepts, adapts difficulty, and has conversations rather than just showing cards.
 
 **Q: Can I export my progress?**
-A: Progress is stored in JSON at `~/.local/share/interview-prep-coach/learning-progress.json` - you can copy it anywhere.
+A: Progress is stored in SQLite at `~/.local/share/interview-prep-coach/interview-prep.db`. You can copy the entire database or export materials to markdown using `interview-prep-coach materials export`.
 
 **Q: What happens on package update?**
-A: Your progress and customizations are preserved. Only the bundled material updates (and you can choose to keep your version).
+A: Your database (progress, custom materials, improvements) is preserved. Package updates only affect the bundled code and default material source.
 
 ## Contributing
 
-Contributions welcome! To improve the bundled material:
+Contributions welcome!
+
+**To improve bundled material:**
 1. Use `/prep` and notice issues
 2. Let the coach log improvements
-3. Export your improved version
-4. Submit as PR
+3. Export improved version: `interview-prep-coach materials export -o improved.md`
+4. Submit as PR to update `data/interview-prep-java-spring-infra.md`
+
+**To add new material plugins:**
+1. Create a new plugin class extending `MaterialPlugin`
+2. Add to `plugins/bundled/`
+3. Submit as PR
 
 ## Support
 

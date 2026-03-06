@@ -1,129 +1,32 @@
-"""Material editor for modifying interview questions."""
+"""Material editor for modifying interview questions in database."""
 
-import re
-from pathlib import Path
-from typing import Dict, Optional, Any, List
+import logging
+from typing import Dict, Optional, Any
 from datetime import datetime
+from pathlib import Path
 
-from ..config.paths import (
-    ensure_editable_material_exists,
-    get_user_questions_file,
-    get_bundled_questions_file,
-)
+from .database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 
 class MaterialEditor:
-    """Handles editing of interview preparation material."""
+    """Handles editing of interview preparation material in database."""
 
-    def __init__(self):
-        """Initialize material editor."""
-        pass
-
-    def ensure_editable_copy(self) -> Path:
+    def __init__(self, db: DatabaseManager):
         """
-        Ensure user has an editable copy of the material.
-
-        Returns:
-            Path to editable material file
-        """
-        return ensure_editable_material_exists()
-
-    def read_material(self) -> str:
-        """
-        Read the current material content.
-
-        Returns:
-            Full content of the material file
-        """
-        material_file = get_user_questions_file()
-        if material_file.exists():
-            with open(material_file, 'r', encoding='utf-8') as f:
-                return f.read()
-
-        # Fall back to bundled version
-        bundled_file = get_bundled_questions_file()
-        with open(bundled_file, 'r', encoding='utf-8') as f:
-            return f.read()
-
-    def write_material(self, content: str) -> None:
-        """
-        Write content to editable material file.
+        Initialize material editor.
 
         Args:
-            content: Full content to write
+            db: DatabaseManager instance
         """
-        material_file = self.ensure_editable_copy()
-        with open(material_file, 'w', encoding='utf-8') as f:
-            f.write(content)
-
-    def find_question_location(
-        self,
-        content: str,
-        section: str,
-        subsection: str,
-        question_number: int
-    ) -> Optional[tuple[int, int]]:
-        """
-        Find the start and end position of a specific question.
-
-        Args:
-            content: Material content
-            section: Section name
-            subsection: Subsection name
-            question_number: Question number (1-indexed)
-
-        Returns:
-            Tuple of (start_pos, end_pos) or None if not found
-        """
-        # Find section
-        section_pattern = rf'^## {re.escape(section)}$'
-        section_match = re.search(section_pattern, content, re.MULTILINE)
-        if not section_match:
-            return None
-
-        # Find subsection after section
-        subsection_pattern = rf'^### {re.escape(subsection)}$'
-        subsection_match = re.search(
-            subsection_pattern,
-            content[section_match.end():],
-            re.MULTILINE
-        )
-        if not subsection_match:
-            return None
-
-        subsection_start = section_match.end() + subsection_match.end()
-
-        # Find the Nth question after subsection
-        question_pattern = r'\n\*\*Q:'
-        matches = list(re.finditer(question_pattern, content[subsection_start:]))
-
-        if question_number < 1 or question_number > len(matches):
-            return None
-
-        question_start = subsection_start + matches[question_number - 1].start()
-
-        # Find end of question (next question or next section/subsection)
-        if question_number < len(matches):
-            # End at next question
-            question_end = subsection_start + matches[question_number].start()
-        else:
-            # Find next ### or ## or end of file
-            next_heading = re.search(
-                r'\n#{2,3} ',
-                content[question_start + 1:]
-            )
-            if next_heading:
-                question_end = question_start + 1 + next_heading.start()
-            else:
-                question_end = len(content)
-
-        return (question_start, question_end)
+        self.db = db
+        logger.debug("MaterialEditor initialized")
 
     def edit_question(
         self,
-        section: str,
-        subsection: str,
-        question_number: int,
+        material_id: str,
+        question_id: int,
         new_question: Optional[str] = None,
         new_answer: Optional[str] = None
     ) -> bool:
@@ -131,264 +34,361 @@ class MaterialEditor:
         Edit a specific question's text or answer.
 
         Args:
-            section: Section name
-            subsection: Subsection name
-            question_number: Question number to edit
+            material_id: Material ID
+            question_id: Question ID to edit
             new_question: New question text (None to keep existing)
             new_answer: New answer text (None to keep existing)
 
         Returns:
             True if successful, False if question not found
         """
-        content = self.read_material()
-        location = self.find_question_location(content, section, subsection, question_number)
+        try:
+            # Build update query based on what's being changed
+            updates = []
+            params = []
 
-        if not location:
+            if new_question is not None:
+                updates.append("question_text = ?")
+                params.append(new_question)
+
+            if new_answer is not None:
+                updates.append("answer_text = ?")
+                params.append(new_answer)
+
+            if not updates:
+                logger.warning("No changes specified for question edit")
+                return False
+
+            # Always update timestamp
+            updates.append("updated_at = ?")
+            params.append(datetime.now().isoformat())
+
+            # Add question_id to params
+            params.append(question_id)
+
+            query = f"UPDATE questions SET {', '.join(updates)} WHERE id = ?"
+            result = self.db.execute(query, tuple(params))
+
+            if result.rowcount == 0:
+                logger.warning(f"Question {question_id} not found")
+                return False
+
+            logger.info(f"Updated question {question_id} in material {material_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to edit question: {e}", exc_info=True)
             return False
-
-        start_pos, end_pos = location
-        question_block = content[start_pos:end_pos]
-
-        # Parse current question
-        q_match = re.match(r'\n\*\*Q:\s*([^\n]+)\*\*', question_block)
-        if not q_match:
-            return False
-
-        current_question = q_match.group(1).strip()
-        answer_start = q_match.end()
-        current_answer = question_block[answer_start:].strip()
-
-        # Build new question block
-        final_question = new_question if new_question is not None else current_question
-        final_answer = new_answer if new_answer is not None else current_answer
-
-        new_block = f"\n**Q: {final_question}**\n{final_answer}\n"
-
-        # Replace in content
-        new_content = content[:start_pos] + new_block + content[end_pos:]
-        self.write_material(new_content)
-
-        return True
 
     def add_question(
         self,
+        material_id: str,
         section: str,
         subsection: str,
         question: str,
         answer: str,
-        position: Optional[int] = None
-    ) -> bool:
+        position: Optional[int] = None,
+        difficulty: Optional[str] = None,
+        tags: Optional[str] = None
+    ) -> int:
         """
         Add a new question to a subsection.
 
         Args:
+            material_id: Material ID
             section: Section name
             subsection: Subsection name
             question: Question text
             answer: Answer text
             position: Position to insert (None = append to end)
+            difficulty: Optional difficulty level
+            tags: Optional comma-separated tags
 
         Returns:
-            True if successful, False if section/subsection not found
-        """
-        content = self.read_material()
-
-        # Find section
-        section_pattern = rf'^## {re.escape(section)}$'
-        section_match = re.search(section_pattern, content, re.MULTILINE)
-        if not section_match:
-            return False
-
-        # Find subsection
-        subsection_pattern = rf'^### {re.escape(subsection)}$'
-        subsection_match = re.search(
-            subsection_pattern,
-            content[section_match.end():],
-            re.MULTILINE
-        )
-        if not subsection_match:
-            return False
-
-        subsection_start = section_match.end() + subsection_match.end()
-
-        # Find insertion point
-        if position is None:
-            # Append to end of subsection
-            # Find next ### or ## or ---
-            next_section = re.search(
-                r'\n(?:#{2,3} |---\n)',
-                content[subsection_start:]
-            )
-            if next_section:
-                insert_pos = subsection_start + next_section.start()
-            else:
-                insert_pos = len(content)
-        else:
-            # Insert at specific position
-            location = self.find_question_location(content, section, subsection, position)
-            if location:
-                insert_pos = location[0]
-            else:
-                # Position doesn't exist, append to end
-                next_section = re.search(
-                    r'\n(?:#{2,3} |---\n)',
-                    content[subsection_start:]
-                )
-                if next_section:
-                    insert_pos = subsection_start + next_section.start()
-                else:
-                    insert_pos = len(content)
-
-        # Create new question block
-        new_question = f"\n**Q: {question}**\n{answer}\n"
-
-        # Insert into content
-        new_content = content[:insert_pos] + new_question + content[insert_pos:]
-        self.write_material(new_content)
-
-        return True
-
-    def apply_improvement(
-        self,
-        improvement: Dict[str, Any]
-    ) -> tuple[bool, str]:
-        """
-        Apply a logged improvement to the material.
-
-        Args:
-            improvement: Improvement dictionary from improvement log
-
-        Returns:
-            Tuple of (success, message)
-        """
-        improvement_type = improvement.get('type')
-        section = improvement.get('section')
-        subsection = improvement.get('subsection')
-        question_number = improvement.get('questionNumber')
-        description = improvement.get('description', '')
-
-        # Parse description for specific changes
-        # This is a heuristic - coach can provide structured changes in description
-
-        if improvement_type == 'unclear_question':
-            # Improvement should describe clearer wording
-            if not question_number:
-                return False, "Question number required for unclear_question type"
-
-            # Look for "Change to:" or "Should be:" in description
-            new_q_match = re.search(r'(?:change to|should be|rewrite as):\s*["\']?([^"\']+)["\']?', description, re.IGNORECASE)
-            if new_q_match:
-                new_question = new_q_match.group(1).strip()
-                if self.edit_question(section, subsection, question_number, new_question=new_question):
-                    return True, f"Updated question {question_number} in {section} - {subsection}"
-                return False, "Question not found"
-
-            return False, "Could not parse new question text from description"
-
-        elif improvement_type == 'answer_issue':
-            # Improvement should describe better answer
-            if not question_number:
-                return False, "Question number required for answer_issue type"
-
-            # Look for answer changes in description
-            new_a_match = re.search(r'(?:answer:|should include:|add:)\s*(.+)', description, re.IGNORECASE | re.DOTALL)
-            if new_a_match:
-                new_answer = new_a_match.group(1).strip()
-                if self.edit_question(section, subsection, question_number, new_answer=new_answer):
-                    return True, f"Updated answer for question {question_number}"
-                return False, "Question not found"
-
-            return False, "Could not parse new answer from description"
-
-        elif improvement_type == 'missing_topic':
-            # Add a new question
-            # Parse question and answer from description
-            q_match = re.search(r'(?:question|Q):\s*(.+?)(?:\n|answer|A:)', description, re.IGNORECASE)
-            a_match = re.search(r'(?:answer|A):\s*(.+)', description, re.IGNORECASE | re.DOTALL)
-
-            if q_match and a_match:
-                question = q_match.group(1).strip()
-                answer = a_match.group(1).strip()
-
-                if self.add_question(section, subsection, question, answer):
-                    return True, f"Added new question to {section} - {subsection}"
-                return False, "Section/subsection not found"
-
-            return False, "Could not parse question/answer from description"
-
-        elif improvement_type == 'outdated_info':
-            # Similar to unclear_question, but might affect answer more
-            if not question_number:
-                return False, "Question number required"
-
-            # Look for updates in description
-            update_match = re.search(r'(?:update to|change to|should mention):\s*(.+)', description, re.IGNORECASE | re.DOTALL)
-            if update_match:
-                new_info = update_match.group(1).strip()
-                # Assume it's answer update for outdated info
-                if self.edit_question(section, subsection, question_number, new_answer=new_info):
-                    return True, f"Updated outdated information in question {question_number}"
-                return False, "Question not found"
-
-            return False, "Could not parse update from description"
-
-        else:
-            return False, f"Improvement type '{improvement_type}' not yet supported for auto-apply"
-
-    def reset_to_bundled(self) -> bool:
-        """
-        Reset material to bundled version, discarding user edits.
-
-        Returns:
-            True if successful
-        """
-        user_file = get_user_questions_file()
-        if user_file.exists():
-            user_file.unlink()
-        return True
-
-    def export_material(self, export_path: Path) -> bool:
-        """
-        Export current material to a file.
-
-        Args:
-            export_path: Path to export to
-
-        Returns:
-            True if successful
+            Question ID of newly created question, or 0 if failed
         """
         try:
-            content = self.read_material()
-            with open(export_path, 'w', encoding='utf-8') as f:
-                f.write(content)
+            # Determine question number
+            if position is not None:
+                question_number = position
+
+                # Shift existing questions up
+                self.db.execute(
+                    """UPDATE questions
+                       SET question_number = question_number + 1
+                       WHERE material_id = ? AND section = ? AND subsection = ?
+                       AND question_number >= ?""",
+                    (material_id, section, subsection, position)
+                )
+            else:
+                # Append to end
+                result = self.db.fetchone(
+                    """SELECT MAX(question_number) as max_num FROM questions
+                       WHERE material_id = ? AND section = ? AND subsection = ?""",
+                    (material_id, section, subsection)
+                )
+                question_number = (result['max_num'] or 0) + 1
+
+            # Insert new question
+            cursor = self.db.execute(
+                """INSERT INTO questions (material_id, section, subsection, question_number,
+                                         question_text, answer_text, difficulty, tags,
+                                         created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    material_id,
+                    section,
+                    subsection,
+                    question_number,
+                    question,
+                    answer,
+                    difficulty,
+                    tags,
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat()
+                )
+            )
+
+            question_id = cursor.lastrowid
+            logger.info(f"Added question {question_id} to {section}/{subsection}")
+            return question_id
+
+        except Exception as e:
+            logger.error(f"Failed to add question: {e}", exc_info=True)
+            return 0
+
+    def delete_question(self, question_id: int) -> bool:
+        """
+        Delete a question.
+
+        Args:
+            question_id: Question ID to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Get question details for renumbering
+            question = self.db.fetchone(
+                "SELECT material_id, section, subsection, question_number FROM questions WHERE id = ?",
+                (question_id,)
+            )
+
+            if not question:
+                logger.warning(f"Question {question_id} not found")
+                return False
+
+            # Delete question
+            self.db.execute("DELETE FROM questions WHERE id = ?", (question_id,))
+
+            # Renumber remaining questions in subsection
+            self.db.execute(
+                """UPDATE questions
+                   SET question_number = question_number - 1
+                   WHERE material_id = ? AND section = ? AND subsection = ?
+                   AND question_number > ?""",
+                (
+                    question['material_id'],
+                    question['section'],
+                    question['subsection'],
+                    question['question_number']
+                )
+            )
+
+            logger.info(f"Deleted question {question_id}")
             return True
-        except Exception:
+
+        except Exception as e:
+            logger.error(f"Failed to delete question: {e}", exc_info=True)
             return False
 
-    def get_material_info(self) -> Dict[str, Any]:
+    def clone_material(
+        self,
+        source_material_id: str,
+        new_material_id: str,
+        new_name: str,
+        new_description: Optional[str] = None
+    ) -> bool:
         """
-        Get information about the current material.
+        Clone an existing material source for customization.
+
+        This is the database equivalent of copy-on-write.
+
+        Args:
+            source_material_id: Source material ID to clone
+            new_material_id: New material ID
+            new_name: Name for new material
+            new_description: Optional description
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Check if source exists
+            source = self.db.fetchone(
+                "SELECT * FROM materials WHERE id = ?",
+                (source_material_id,)
+            )
+
+            if not source:
+                logger.error(f"Source material {source_material_id} not found")
+                return False
+
+            # Check if new material ID already exists
+            existing = self.db.fetchone(
+                "SELECT id FROM materials WHERE id = ?",
+                (new_material_id,)
+            )
+
+            if existing:
+                logger.error(f"Material {new_material_id} already exists")
+                return False
+
+            with self.db.transaction():
+                # Create new material entry
+                self.db.execute(
+                    """INSERT INTO materials (id, name, description, version, source_type, is_active)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        new_material_id,
+                        new_name,
+                        new_description or f"Cloned from {source['name']}",
+                        source['version'],
+                        'user',
+                        False
+                    )
+                )
+
+                # Clone all questions
+                self.db.execute(
+                    """INSERT INTO questions (material_id, section, subsection, question_number,
+                                             question_text, answer_text, difficulty, tags,
+                                             created_at, updated_at)
+                       SELECT ?, section, subsection, question_number,
+                              question_text, answer_text, difficulty, tags,
+                              ?, ?
+                       FROM questions
+                       WHERE material_id = ?""",
+                    (
+                        new_material_id,
+                        datetime.now().isoformat(),
+                        datetime.now().isoformat(),
+                        source_material_id
+                    )
+                )
+
+            logger.info(f"Cloned material {source_material_id} to {new_material_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to clone material: {e}", exc_info=True)
+            return False
+
+    def get_material_info(self, material_id: str) -> Dict[str, Any]:
+        """
+        Get information about a material.
+
+        Args:
+            material_id: Material ID
 
         Returns:
             Dictionary with material metadata
         """
-        user_file = get_user_questions_file()
-        using_custom = user_file.exists()
+        try:
+            material = self.db.fetchone(
+                "SELECT * FROM materials WHERE id = ?",
+                (material_id,)
+            )
 
-        if using_custom:
-            material_file = user_file
-            source = "user-edited"
-        else:
-            material_file = get_bundled_questions_file()
-            source = "bundled"
+            if not material:
+                return {'error': 'Material not found'}
 
-        # Get file stats
-        stats = material_file.stat()
+            # Get question count
+            question_count = self.db.count_records(
+                "questions",
+                "material_id = ?",
+                (material_id,)
+            )
 
-        return {
-            'source': source,
-            'path': str(material_file),
-            'size_bytes': stats.st_size,
-            'modified': datetime.fromtimestamp(stats.st_mtime).isoformat(),
-            'editable': True  # Can always edit by creating copy
-        }
+            # Get section count
+            sections = self.db.fetchall(
+                "SELECT DISTINCT section FROM questions WHERE material_id = ?",
+                (material_id,)
+            )
+
+            return {
+                'id': material['id'],
+                'name': material['name'],
+                'description': material['description'],
+                'version': material['version'],
+                'source_type': material['source_type'],
+                'is_active': bool(material['is_active']),
+                'created_at': material['created_at'],
+                'updated_at': material['updated_at'],
+                'question_count': question_count,
+                'section_count': len(sections)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get material info: {e}", exc_info=True)
+            return {'error': str(e)}
+
+    def export_material_to_markdown(self, material_id: str, output_path: Path) -> bool:
+        """
+        Export material from database to markdown file.
+
+        Args:
+            material_id: Material ID to export
+            output_path: Path to write markdown file
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Get all questions ordered by section, subsection, question_number
+            questions = self.db.fetchall(
+                """SELECT section, subsection, question_number, question_text, answer_text
+                   FROM questions
+                   WHERE material_id = ?
+                   ORDER BY section, subsection, question_number""",
+                (material_id,)
+            )
+
+            if not questions:
+                logger.warning(f"No questions found for material {material_id}")
+                return False
+
+            # Build markdown content
+            lines = []
+            current_section = None
+            current_subsection = None
+
+            for q in questions:
+                # Add section header if changed
+                if q['section'] != current_section:
+                    if current_section is not None:
+                        lines.append('')  # Blank line before new section
+                    lines.append(f"## {q['section']}\n")
+                    current_section = q['section']
+                    current_subsection = None
+
+                # Add subsection header if changed
+                if q['subsection'] != current_subsection:
+                    lines.append(f"### {q['subsection']}\n")
+                    current_subsection = q['subsection']
+
+                # Add question
+                lines.append(f"**Q: {q['question_text']}**")
+                lines.append(q['answer_text'])
+                lines.append('')  # Blank line after answer
+
+            # Write to file
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+
+            logger.info(f"Exported material {material_id} to {output_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to export material: {e}", exc_info=True)
+            return False
