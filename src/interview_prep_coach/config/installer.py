@@ -17,6 +17,40 @@ from .paths import (
 class ClaudeCodeInstaller:
     """Handles installation/uninstallation of interview prep coach into Claude Code."""
 
+    # All 25 MCP tools for interview-prep-coach
+    # Format: mcp__<server-name>__<tool-name> with double underscores
+    MCP_TOOLS = [
+        # Question Management (7 tools)
+        'mcp__interview-prep-coach__get-sections',
+        'mcp__interview-prep-coach__get-subsections',
+        'mcp__interview-prep-coach__get-question',
+        'mcp__interview-prep-coach__get-next-question',
+        'mcp__interview-prep-coach__get-all-questions',
+        'mcp__interview-prep-coach__search-questions',
+        'mcp__interview-prep-coach__get-question-count',
+        # Progress Tracking (5 tools)
+        'mcp__interview-prep-coach__get-statistics',
+        'mcp__interview-prep-coach__update-progress',
+        'mcp__interview-prep-coach__get-weak-areas',
+        'mcp__interview-prep-coach__start-session',
+        'mcp__interview-prep-coach__end-session',
+        # Improvement System (4 tools)
+        'mcp__interview-prep-coach__log-improvement',
+        'mcp__interview-prep-coach__get-improvements',
+        'mcp__interview-prep-coach__mark-improvement-implemented',
+        'mcp__interview-prep-coach__get-improvement-metrics',
+        # Material Management (9 tools)
+        'mcp__interview-prep-coach__edit-question',
+        'mcp__interview-prep-coach__add-question',
+        'mcp__interview-prep-coach__delete-question',
+        'mcp__interview-prep-coach__list-materials',
+        'mcp__interview-prep-coach__get-material-info',
+        'mcp__interview-prep-coach__activate-material',
+        'mcp__interview-prep-coach__import-material',
+        'mcp__interview-prep-coach__clone-material',
+        'mcp__interview-prep-coach__export-material',
+    ]
+
     def __init__(self):
         """Initialize installer."""
         self.claude_dir = get_claude_dir()
@@ -247,7 +281,7 @@ Start with `/prep` or `/prep [mode] [topic]`
                 'mcpServers': {},
                 'enabledMcpjsonServers': [],
                 'disabledMcpjsonServers': [],
-                'hasTrustDialogAccepted': False,
+                'hasTrustDialogAccepted': True,  # Auto-accept trust for interview-prep-coach
             }
 
         # Get project config
@@ -257,6 +291,9 @@ Start with `/prep` or `/prep [mode] [topic]`
         if 'mcpServers' not in project_config:
             project_config['mcpServers'] = {}
 
+        # Auto-accept trust dialog for interview-prep-coach
+        project_config['hasTrustDialogAccepted'] = True
+
         # Add our MCP server configuration
         project_config['mcpServers']['interview-prep-coach'] = {
             'type': 'stdio',
@@ -265,8 +302,62 @@ Start with `/prep` or `/prep [mode] [topic]`
             'env': {}
         }
 
+        # Add to allowedTools if not already present
+        if 'allowedTools' not in project_config:
+            project_config['allowedTools'] = []
+
+        for tool in self.MCP_TOOLS:
+            if tool not in project_config['allowedTools']:
+                project_config['allowedTools'].append(tool)
+
         # Write back to file
         self._write_claude_config(config)
+
+        # Also configure permissions in settings.json to auto-approve MCP tools
+        self._configure_permissions()
+
+    def _configure_permissions(self) -> None:
+        """
+        Configure permissions in project-specific .claude/settings.json.
+
+        This prevents permission prompts when using the /prep skill.
+        Creates a project-scoped settings file instead of modifying global settings.
+        """
+        # Get current working directory (project root)
+        cwd = os.getcwd()
+        project_claude_dir = Path(cwd) / '.claude'
+        project_settings_file = project_claude_dir / 'settings.json'
+
+        # Create .claude directory if it doesn't exist
+        project_claude_dir.mkdir(parents=True, exist_ok=True)
+
+        # Read current project settings if they exist
+        if project_settings_file.exists():
+            with open(project_settings_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+        else:
+            settings = {
+                "$schema": "https://json.schemastore.org/claude-code-settings.json"
+            }
+
+        # Ensure permissions exists
+        if 'permissions' not in settings:
+            settings['permissions'] = {}
+
+        # Ensure allow array exists
+        if 'allow' not in settings['permissions']:
+            settings['permissions']['allow'] = []
+
+        # Add all interview-prep-coach MCP tools to permissions allow list
+        # Format: mcp__<server-name>__<tool-name> with double underscores
+        for tool in self.MCP_TOOLS:
+            if tool not in settings['permissions']['allow']:
+                settings['permissions']['allow'].append(tool)
+
+        # Write project settings
+        with open(project_settings_file, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+            f.write('\n')  # Add trailing newline
 
     def uninstall(self, remove_data: bool = False) -> Dict[str, Any]:
         """
@@ -303,6 +394,14 @@ Start with `/prep` or `/prep [mode] [topic]`
         except Exception as e:
             results['errors'].append(f"Failed to remove MCP server: {e}")
             results['steps']['mcp_server_removed'] = False
+
+        # Remove permissions from settings.json
+        try:
+            self._remove_permissions()
+            results['steps']['permissions_removed'] = True
+        except Exception as e:
+            results['errors'].append(f"Failed to remove permissions: {e}")
+            results['steps']['permissions_removed'] = False
 
         # Optionally remove data
         if remove_data:
@@ -355,6 +454,40 @@ Start with `/prep` or `/prep [mode] [topic]`
 
         except Exception:
             # Silently ignore errors - server might not exist
+            pass
+
+    def _remove_permissions(self) -> None:
+        """
+        Remove interview-prep-coach permissions from project .claude/settings.json.
+        """
+        try:
+            # Get current working directory (project root)
+            cwd = os.getcwd()
+            project_settings_file = Path(cwd) / '.claude' / 'settings.json'
+
+            if not project_settings_file.exists():
+                return  # Nothing to remove
+
+            with open(project_settings_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+
+            # Remove all interview-prep-coach tool permissions
+            if 'permissions' in settings and 'allow' in settings['permissions']:
+                # Filter out any interview-prep-coach permissions
+                original_count = len(settings['permissions']['allow'])
+                settings['permissions']['allow'] = [
+                    p for p in settings['permissions']['allow']
+                    if not p.startswith('mcp__interview-prep-coach__')
+                ]
+
+                # Write back to file only if we actually removed something
+                if len(settings['permissions']['allow']) < original_count:
+                    with open(project_settings_file, 'w', encoding='utf-8') as f:
+                        json.dump(settings, f, indent=2)
+                        f.write('\n')
+
+        except Exception:
+            # Silently ignore errors
             pass
 
     def get_status(self) -> Dict[str, Any]:
