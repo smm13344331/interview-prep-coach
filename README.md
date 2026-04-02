@@ -1,529 +1,283 @@
-# Interview Prep Coach 🎯
+# Interview Prep Coach
 
-AI-powered technical interview preparation system with progress tracking, adaptive learning, and self-improving material.
+> An AI-powered technical interview coach that lives inside Claude Code — tracks your progress, adapts to your weak spots, and improves its own question bank over time.
+
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey)]()
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-MCP-purple)](https://claude.ai/claude-code)
+
+Once installed, open Claude Code and type:
+
+```
+/prep
+```
+
+Your personal interview coach starts immediately — no browser, no separate app.
+
+---
+
+## Why This Exists
+
+Most interview prep tools are passive — flashcards, videos, static PDFs. This is different:
+
+- **Conversational** — a real back-and-forth with an AI coach, not click-through cards
+- **Memory** — it remembers every question you've answered, every mistake you've made
+- **Adaptive** — `/prep weak` zeros in on topics where your accuracy is below 60%
+- **Self-improving** — the coach can rewrite unclear questions mid-session and save the fix permanently
+- **Your material** — import any markdown file as a question bank; the system isn't Java/Spring-only
+
+---
 
 ## Quick Start
 
 ```bash
-# Install
 pip install interview-prep-coach
+interview-prep-coach install   # run from the directory where you'll use Claude Code
+```
 
-# Integrate with Claude Code
-interview-prep-coach install
+Restart Claude Code, then type inside it:
 
-# Restart Claude Code and use
+```
 /prep
 ```
 
-## What Is This?
+---
 
-An intelligent interview preparation system that:
-- **Plugin-based materials** - Easy to add custom topics, import from files or APIs
-- **Database-backed** - Fast searches, persistent tracking, powerful queries
-- **Tracks your progress** - Remembers everything across sessions
-- **Identifies weak areas** - Focuses practice where you need it
-- **Self-improves** - AI coach can enhance the questions based on usage
-- **Multiple material sources** - Switch between different question banks
-
-## Features
-
-### 🎓 Interactive Learning
-- One-on-one coaching with an AI interviewer
-- Conversational Q&A (not flashcards)
-- Constructive feedback on your answers
-- Teaches concepts when you struggle
-- Adaptive difficulty
-
-### 📊 Progress Tracking
-- Persistent across sessions
-- Accuracy per topic
-- Weak/strong area identification
-- Session history
-- Overall statistics
-
-### 🔄 Self-Improving Material
-- Coach notices unclear questions during sessions
-- Logs improvement suggestions
-- Can apply fixes directly to material
-- Material evolves based on real usage
-
-### 🎯 Learning Modes
-
-**Continue Mode** (`/prep`)
-- Resume from where you left off
-- Linear progression through material
-
-**Weak Areas Mode** (`/prep weak`)
-- Focus on topics with <60% accuracy
-- Targeted practice
-
-**Mock Interview Mode** (`/prep mock`)
-- Random questions across sections
-- Simulates real interview conditions
-- Formal evaluation
-
-**Section-Specific** (`/prep section <name>`)
-- Deep dive into one topic
-- Practice specific technology
-
-## Installation
-
-### Prerequisites
-- Python 3.10 or higher
-- Claude Code (latest version)
-- pip
-
-**Note**: SQLite 3.38+ is required to avoid CVE-2022-35737. This is handled automatically via `pysqlite3-binary` dependency - no manual configuration needed.
-
-### Install Package
-
-```bash
-pip install interview-prep-coach
-```
-
-This automatically installs:
-- Core package with CLI and MCP server
-- `pysqlite3-binary` (bundles SQLite 3.42+ for security)
-- All required dependencies
-
-### Integrate with Claude Code
-
-```bash
-interview-prep-coach install
-```
-
-This will:
-- ✓ Install `/prep` skill in `~/.claude/skills/`
-- ✓ Configure MCP server in `~/.claude/settings.json`
-- ✓ Initialize data directory at `~/.local/share/interview-prep-coach/`
-
-### Verify Installation
-
-```bash
-interview-prep-coach status
-```
-
-### Restart Claude Code
-
-Exit and restart Claude Code for changes to take effect:
-```bash
-exit
-claude
-```
-
-## Usage
-
-### Start a Session
-
-```bash
-/prep                    # Continue from last session
-/prep weak              # Practice weak areas
-/prep mock              # Mock interview mode
-/prep section Docker    # Practice specific section
-```
-
-### During a Session
-
-The coach will:
-1. Welcome you and show progress
-2. Ask questions one at a time
-3. Evaluate your answers
-4. Provide constructive feedback
-5. Track progress automatically
-6. Adapt difficulty based on performance
-
-Available commands during practice:
-- Type your answer naturally
-- `hint` - Get a hint
-- `skip` - Skip question
-- `explain` - See answer with explanation
-
-### Example Session
+## Demo
 
 ```
 You: /prep
 
-Coach: Welcome back! 👋
+Coach: Welcome back! 📊 Progress: 47 questions answered, 83% correct
+       Current section: Java Core — Memory Management
+       Weak areas: Concurrency (54%), GC Algorithms (48%)
 
-📊 Your Progress:
-- Questions answered: 45 (82% correct)
-- Current section: Java Core Concepts
-- Weak areas: Concurrency, GC Algorithms
+       Ready to continue?
 
-What would you like to do?
+You: yes
 
-You: continue
+Coach: ─────────────────────────────────────────────
+       Question #12 · Memory Management
 
-Coach: Great! Let's continue with Java Core Concepts.
+       Explain the difference between young generation
+       and old generation in the Java heap.
+       ─────────────────────────────────────────────
+       Take your time. Type your answer when ready.
 
-Question #5 - Memory Management
+You: Young gen holds short-lived objects and is GC'd frequently
+     via minor GC. Old gen holds long-lived objects and is
+     collected less often via major/full GC...
 
-Explain the difference between young generation and old generation in Java heap.
+Coach: ✅ Solid answer! You nailed the lifecycle distinction.
+       One thing to add: survivor spaces (S0/S1) in young gen
+       act as a staging area before promotion to old gen.
+
+       Ready for the next one?
+```
 
 ---
-Take your time. Type your answer when ready.
 
-You: [Your answer here...]
+## Features
 
-Coach: ✅ Excellent! You covered the key points...
-[Provides detailed feedback]
+### Interactive coaching
+One-on-one Q&A with a patient, constructive AI interviewer. Not flashcards — real conversations where the coach explains concepts when you're stuck.
 
-Ready for the next question?
+### Persistent progress
+Every answer is recorded in a local SQLite database. Accuracy per topic, session history, weak areas — all tracked automatically across sessions.
+
+### Adaptive modes
+| Command | Mode |
+|---|---|
+| `/prep` | Continue from where you left off |
+| `/prep weak` | Focus on topics under 60% accuracy |
+| `/prep mock` | Random questions, formal evaluation |
+| `/prep section Docker` | Deep dive into one topic |
+
+### Self-improving material
+When the coach notices an unclear question or outdated info during a session, it can propose and apply a fix on the spot. Your next session benefits from the improvement.
+
+### Plugin-based question banks
+The default bank covers Java, Spring, Docker, and Kubernetes. Swap it out completely, import your own markdown file, or clone and customize existing material.
+
+---
+
+## Installation
+
+**Prerequisites:** Python 3.10+, Claude Code, pip
+
+```bash
+# 1. Install the package
+pip install interview-prep-coach
+
+# 2. Register /prep skill and MCP server (run from the directory where you'll open Claude Code)
+interview-prep-coach install
+
+# 3. Restart Claude Code, then type inside it:
+#    /prep
 ```
 
-## How It Works
-
-### Architecture
-
-```
-User types: /prep
-     ↓
-Claude Code loads skill from: ~/.claude/skills/prep/SKILL.md
-     ↓
-Coach activates MCP server: interview-prep-coach-server
-     ↓
-MCP provides 19 tools for:
-  - Question management
-  - Progress tracking
-  - Improvement logging
-  - Material editing
-     ↓
-Data stored locally: ~/.local/share/interview-prep-coach/
-```
-
-### MCP Tools (19 Total)
-
-The coach uses these tools automatically:
-
-**Question Management**
-- Get next question in sequence
-- Search questions by keyword
-- List sections and subsections
-- Parse questions from material
-
-**Progress Tracking**
-- Load/save learning state
-- Track accuracy per topic
-- Identify weak areas
-- Calculate statistics
-
-**Material Improvement**
-- Log quality issues
-- Apply improvements to questions
-- Edit questions directly
-- Add new questions
-
-### Data Storage
-
-All your data is stored locally in a SQLite database:
+All data is stored locally — no accounts, no cloud sync, no telemetry.
 
 ```
 ~/.local/share/interview-prep-coach/
-└── interview-prep.db            # SQLite database (all data)
+└── interview-prep.db    ← SQLite: questions, progress, sessions, improvements
 ```
 
-The database contains:
-- **materials** - Question sources (bundled, imported, cloned)
-- **questions** - All questions with full-text search
-- **progress** - Per-question attempt history
-- **improvements** - Material quality tracking
-- **sessions** - Learning session history
-- **plugins** - Plugin registry
+> **Important: directory-scoped activation**
+> Run `interview-prep-coach install` from the directory where you intend to use Claude Code. The MCP server is registered as a project-scoped entry in `~/.claude.json` keyed to that exact path — Claude Code will only activate it when opened in the same directory. If you want `/prep` available in a different directory, `cd` there and run `interview-prep-coach install` again. Your progress database is shared regardless of which directory you install from.
 
-**Bundled questions** (imported on first run):
-```
-/usr/local/lib/.../interview_prep_coach/data/
-└── interview-prep-java-spring-infra.md  # Default questions (45KB)
-```
+---
 
-**Plugin system**: Add custom materials via plugins or file import. Switch between materials anytime.
+## Modes & Commands
 
-## Material Improvement System
+### During a session
+- Type your answer naturally — the coach evaluates it
+- `hint` — get a nudge
+- `skip` — move to the next question
+- `explain` — see the full answer with explanation
 
-The coach can improve its own teaching material!
-
-### How It Works
-
-1. **During session**, coach (or you) notices an issue:
-   - Unclear question
-   - Outdated information
-   - Missing topic
-   - Incorrect answer
-
-2. **Coach logs it**:
-   ```
-   Coach: "I noticed this question mentions outdated version info.
-          Should I update it now?"
-   ```
-
-3. **If approved**, coach applies fix:
-   ```
-   ✓ Applied improvement #5: Updated question 3 in Spring Framework
-   ```
-
-4. **Next user** gets the improved version!
-
-### Improvement Types
-
-- `unclear_question` - Question is ambiguous
-- `answer_issue` - Answer incomplete/wrong
-- `outdated_info` - Technology version outdated
-- `missing_topic` - Coverage gap
-- `insufficient_coverage` - Needs more depth
-- `difficulty_mismatch` - Too easy/hard
-
-### You Can Customize
-
-With the plugin and material system:
-- Import your own questions from markdown files
-- Clone and modify existing materials
-- Create custom plugins for different sources
-- Switch between material banks anytime
-- All changes persist in the database
-
-## CLI Commands
-
+### CLI
 ```bash
-# Installation
-interview-prep-coach install       # Install to Claude Code
-interview-prep-coach uninstall     # Remove from Claude Code
-interview-prep-coach status        # Show installation & progress
-interview-prep-coach info          # System information
-
-# Progress management
-interview-prep-coach reset         # Clear progress for active material
-
-# Material management
-interview-prep-coach materials list              # List all materials
-interview-prep-coach materials info <id>         # Show material details
-interview-prep-coach materials activate <id>     # Switch active material
-interview-prep-coach materials import <file>     # Import from file
-interview-prep-coach materials clone <id> <new>  # Clone for customization
-interview-prep-coach materials export -o <file>  # Export to markdown
-interview-prep-coach materials delete <id>       # Delete material
+interview-prep-coach status                     # Show install + progress summary
+interview-prep-coach materials list             # List all question banks
+interview-prep-coach materials import my.md     # Import custom questions
+interview-prep-coach materials activate <id>    # Switch active bank
+interview-prep-coach materials clone <id> <new> # Fork a bank for customization
+interview-prep-coach materials export -o out.md # Export to markdown
+interview-prep-coach reset                      # Clear progress (keeps materials)
+interview-prep-coach uninstall                  # Remove from Claude Code
 ```
 
-## Customization
+---
 
-### Import Your Own Material
+## Bring Your Own Questions
 
-```bash
-# Create a markdown file with your questions (see format below)
-# Then import it:
-interview-prep-coach materials import my-questions.md \
-  --id my-topic \
-  --name "My Custom Topic"
-
-# Activate it:
-interview-prep-coach materials activate my-topic
-
-# Start practicing:
-/prep
-```
-
-### Clone and Modify Existing Material
-
-```bash
-# Clone bundled material
-interview-prep-coach materials clone java-spring-bundled my-java \
-  --name "My Java Questions"
-
-# Activate your copy
-interview-prep-coach materials activate my-java
-
-# Edit questions via the coach during sessions or export/edit/re-import
-interview-prep-coach materials export -o /tmp/my-java.md
-# Edit the file...
-interview-prep-coach materials import /tmp/my-java.md --id my-java-v2 --name "My Java V2"
-```
-
-### Question Format
-
-Questions use simple markdown:
+Any markdown file with this structure works:
 
 ```markdown
 ## Section Name
 
 ### Subsection Name
 
-**Q: Question text here?**
-Answer text here with explanations...
+**Q: Your question here?**
+The answer and explanation here.
 
 **Q: Another question?**
-Another answer...
+Another answer.
 ```
 
-The importer automatically parses this format and stores questions in the database.
-
-## Troubleshooting
-
-### SQLite Version Error
-
-If you see an error about SQLite version or CVE-2022-35737:
-
+Import it:
 ```bash
-# Reinstall to ensure pysqlite3-binary is properly installed
-pip install --force-reinstall interview-prep-coach
+interview-prep-coach materials import my-questions.md \
+  --id my-topic \
+  --name "My Custom Topic"
 
-# Or just reinstall the SQLite package
-pip install --force-reinstall pysqlite3-binary
+interview-prep-coach materials activate my-topic
+/prep
 ```
-
-Verify the fix:
-```bash
-python -c "from interview_prep_coach._sqlite_compat import sqlite3; print(f'SQLite: {sqlite3.sqlite_version}')"
-# Should show: SQLite: 3.42.0 or higher
-```
-
-### `/prep` command not found
-
-1. Check installation: `interview-prep-coach status`
-2. Verify skill exists: `ls ~/.claude/skills/prep/SKILL.md`
-3. Restart Claude Code completely
-4. Check Claude Code version is latest
-
-### MCP server not responding
-
-```bash
-# Check settings
-cat ~/.claude/settings.json | grep interview-prep-coach
-
-# Should show:
-# "interview-prep-coach": {
-#   "command": "interview-prep-coach-server",
-#   ...
-# }
-```
-
-### Progress not saving
-
-Check database permissions:
-```bash
-ls -la ~/.local/share/interview-prep-coach/interview-prep.db
-```
-
-If database is corrupted:
-```bash
-rm ~/.local/share/interview-prep-coach/interview-prep.db
-# Restart - will recreate database
-```
-
-### Reset everything
-
-```bash
-interview-prep-coach reset                      # Clear progress (keeps materials)
-interview-prep-coach materials delete <id>      # Delete specific material
-interview-prep-coach uninstall --remove-data    # Remove everything including database
-pip uninstall interview-prep-coach              # Remove package
-```
-
-## Development
-
-### Building from Source
-
-```bash
-git clone <repository>
-cd interview-prep-coach
-
-# Install in development mode
-pip install -e .
-
-# Build package
-python -m build
-
-# Install locally
-pip install dist/interview_prep_coach-1.0.0-py3-none-any.whl
-```
-
-### Project Structure
-
-```
-interview-prep-coach/
-├── src/interview_prep_coach/
-│   ├── cli.py              # Command-line interface
-│   ├── server.py           # MCP server (19 tools)
-│   ├── config/
-│   │   ├── paths.py        # File path management
-│   │   └── installer.py    # Claude Code integration
-│   ├── core/
-│   │   ├── database.py     # DatabaseManager (SQLite)
-│   │   ├── schema.py       # Database schema definitions
-│   │   ├── progress.py     # ProgressTracker
-│   │   ├── improvements.py # ImprovementLogger
-│   │   ├── questions.py    # QuestionParser
-│   │   ├── material_editor.py    # MaterialEditor
-│   │   └── plugin_manager.py     # PluginManager
-│   ├── plugins/
-│   │   ├── base.py         # MaterialPlugin base class
-│   │   ├── importers.py    # MarkdownImporter, JSONImporter
-│   │   └── bundled/        # Bundled plugins
-│   │       └── java_spring_importer.py
-│   └── data/               # Bundled data
-│       ├── interview-coach-agent-prompt.md
-│       ├── interview-prep-java-spring-infra.md
-│       └── schema.sql
-└── tests/
-```
-
-## Technology Details
-
-### Built With
-- [MCP (Model Context Protocol)](https://github.com/anthropics/mcp) - Claude integration
-- [Click](https://click.palletsprojects.com/) - CLI interface
-- SQLite 3.42+ - Database with FTS5 full-text search (via `pysqlite3-binary`)
-
-### Python Support
-- Python 3.10+
-- Cross-platform (Linux, macOS, Windows/WSL)
-- Bundled SQLite 3.42+ (no system dependency)
-
-### License
-MIT License - see LICENSE file
-
-## FAQ
-
-**Q: Is this only for Java/Spring/Docker/Kubernetes?**
-A: No! The default material includes those topics, but the system works with ANY technical content. Replace the material with your own questions.
-
-**Q: Does it work offline?**
-A: Yes, everything is local. Claude Code requires internet, but your data stays on your machine.
-
-**Q: Can multiple people use it?**
-A: Yes, each user has their own progress file. Data is per-user account.
-
-**Q: How does it compare to flashcards?**
-A: More interactive! The AI coach evaluates understanding, teaches concepts, adapts difficulty, and has conversations rather than just showing cards.
-
-**Q: Can I export my progress?**
-A: Progress is stored in SQLite at `~/.local/share/interview-prep-coach/interview-prep.db`. You can copy the entire database or export materials to markdown using `interview-prep-coach materials export`.
-
-**Q: What happens on package update?**
-A: Your database (progress, custom materials, improvements) is preserved. Package updates only affect the bundled code and default material source.
-
-## Contributing
-
-Contributions welcome!
-
-**To improve bundled material:**
-1. Use `/prep` and notice issues
-2. Let the coach log improvements
-3. Export improved version: `interview-prep-coach materials export -o improved.md`
-4. Submit as PR to update `data/interview-prep-java-spring-infra.md`
-
-**To add new material plugins:**
-1. Create a new plugin class extending `MaterialPlugin`
-2. Add to `plugins/bundled/`
-3. Submit as PR
-
-## Support
-
-- Issues: [GitHub Issues](https://github.com/yourusername/interview-prep-coach/issues)
-- Docs: This README
-- Help: `interview-prep-coach --help`
 
 ---
 
-**Ready to ace your next interview?** Install now and start practicing! 🚀
+## Architecture
+
+```
+/prep (Claude Code skill)
+  └── interview-prep-coach-server (MCP server, 25 tools)
+        ├── QuestionParser   — retrieve & search questions (FTS5)
+        ├── ProgressTracker  — per-question attempt history
+        ├── ImprovementLogger — log & apply material fixes
+        ├── MaterialEditor   — CRUD on question banks
+        └── PluginManager    — install/enable/disable plugins
+              └── SQLite database (~/.local/share/.../interview-prep.db)
+```
+
+The MCP server is stateless — each tool call is independent, all state lives in SQLite. The `/prep` skill is a prompt that instructs Claude to act as a coach using those 25 tools.
+
+---
+
+## How It Works (Under the Hood)
+
+1. `interview-prep-coach install` copies a `SKILL.md` to `~/.claude/skills/prep/` (global) and registers the MCP server in `~/.claude.json` **scoped to the current working directory**
+2. When Claude Code starts in that directory, it reads the project entry and launches the MCP server
+3. When you type `/prep`, Claude loads the skill prompt and calls MCP tools to get questions, track answers, and log improvements — all locally
+4. Progress persists in SQLite between sessions; no data leaves your machine
+
+The directory scope is a Claude Code constraint: MCP servers are configured per-project so different projects can use different tools without conflicts. The side-effect is that `/prep` will silently have no tools if you open Claude Code in a different directory. Re-running `interview-prep-coach install` from any directory adds a new entry for that path.
+
+---
+
+## Troubleshooting
+
+**`/prep` not found or has no tools** — The most common cause is opening Claude Code in a different directory than where you ran `interview-prep-coach install`. The MCP server is directory-scoped (see Installation note). Either `cd` to the original directory, or re-run `interview-prep-coach install` from the current one. Then restart Claude Code.
+
+**MCP server not responding** — Check that the server is registered for the current directory:
+```bash
+cat ~/.claude.json | grep -A5 interview-prep-coach
+```
+
+**SQLite error** — The package bundles SQLite 3.42+ via `pysqlite3-binary` to avoid CVE-2022-35737. If you see an error:
+```bash
+pip install --force-reinstall pysqlite3-binary
+```
+
+**Reset everything**
+```bash
+interview-prep-coach uninstall --remove-data
+pip uninstall interview-prep-coach
+```
+
+---
+
+## FAQ
+
+**Is this only for Java/Spring?**
+No. The default material covers Java, Spring, Docker, and Kubernetes. Replace it with any markdown file and it works for any technical topic.
+
+**Does it require internet?**
+Claude Code requires internet. Your data (questions, progress, improvements) stays entirely local.
+
+**Does it work on macOS / Windows?**
+Linux and macOS natively. Windows via WSL.
+
+**Can I export my question bank or back up my data?**
+
+Export the active question bank to markdown:
+```bash
+interview-prep-coach materials export -o questions.md
+```
+
+Back up everything (questions, progress, session history):
+```bash
+cp ~/.local/share/interview-prep-coach/interview-prep.db ~/backup.db
+```
+
+---
+
+## Contributing
+
+**Improve the bundled question bank:**
+1. Use `/prep` and let the coach log improvements
+2. Export: `interview-prep-coach materials export -o improved.md`
+3. Submit a PR updating `src/interview_prep_coach/data/interview-prep-java-spring-infra.md`
+
+**Add a new topic plugin:**
+1. Subclass `MaterialPlugin` in `src/interview_prep_coach/plugins/bundled/`
+2. Submit a PR
+
+See [CLAUDE.md](CLAUDE.md) for the full development guide.
+
+---
+
+## Built With
+
+- [MCP (Model Context Protocol)](https://github.com/anthropics/mcp) — Claude tool integration
+- [Click](https://click.palletsprojects.com/) — CLI
+- [SQLite + FTS5](https://www.sqlite.org/fts5.html) — local database with full-text search (bundled via `pysqlite3-binary`)
+
+---
+
+MIT License · [Issues](https://github.com/smm13344331/interview-prep-coach/issues)
 
 ```bash
 pip install interview-prep-coach && interview-prep-coach install
