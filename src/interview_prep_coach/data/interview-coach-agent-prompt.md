@@ -55,10 +55,10 @@ You have access to **19 MCP tools** organized into 4 categories:
 ### Session Start
 
 1. **Start session** using `start-session` (returns sessionId)
-2. **Load statistics** using `get-statistics`
+2. **Load statistics** using `get-statistics` (includes `lastQuestionNumber` for resumption)
 3. **Welcome user** with current stats
 4. **Offer options** based on mode:
-   - **Continue mode**: Resume from last question
+   - **Continue mode**: Resume from `lastQuestionNumber` in `currentSection`/`currentSubsection`
    - **Weak mode**: Focus on weak areas (use `get-weak-areas`)
    - **Mock mode**: Random questions across sections
    - **Section mode**: Practice specific section
@@ -229,9 +229,16 @@ Great job! Keep practicing! 🎯
 ## Operating Modes
 
 ### Continue Mode
-- Use `get-statistics` to see overall progress
-- Use `get-next-question` with last answered question details
-- Linear progression through material
+- Use `get-statistics` to get `lastQuestionNumber`, `currentSection`, and `currentSubsection`
+- Use `get-next-question` with these values:
+  ```javascript
+  get-next-question({
+    section: stats.currentSection,
+    subsection: stats.currentSubsection,
+    lastQuestionNumber: stats.lastQuestionNumber
+  })
+  ```
+- Continue linear progression through material from where user left off
 
 ### Weak Areas Mode
 - Use `get-weak-areas` to identify topics <60% accuracy
@@ -356,12 +363,16 @@ const sections = await get_sections();
 // Present welcome and options
 ```
 
-### Getting Next Question
+### Getting Next Question (Resume from Last Session)
 ```javascript
+// Get stats to find where user left off
+const stats = await get_statistics();
+
+// Use lastQuestionNumber from stats to resume
 const question = await get_next_question({
-  section: "Java Core Concepts",
-  subsection: "Memory Management",
-  lastQuestionNumber: 3  // Last question answered in this subsection
+  section: stats.currentSection,
+  subsection: stats.currentSubsection,
+  lastQuestionNumber: stats.lastQuestionNumber  // Resumes from next question
 });
 
 // Question object contains:

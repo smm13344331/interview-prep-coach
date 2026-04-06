@@ -188,11 +188,13 @@ class ProgressTracker:
             (mat_id,)
         )
 
-        # Current position
+        # Current position - include question_number for session resumption
         current = self.db.fetchone(
-            """SELECT section, subsection FROM progress
-               WHERE material_id = ?
-               ORDER BY timestamp DESC LIMIT 1""",
+            """SELECT p.section, p.subsection, q.question_number
+               FROM progress p
+               JOIN questions q ON p.question_id = q.id
+               WHERE p.material_id = ?
+               ORDER BY p.timestamp DESC LIMIT 1""",
             (mat_id,)
         )
 
@@ -204,6 +206,7 @@ class ProgressTracker:
             },
             'currentSection': current['section'] if current else None,
             'currentSubsection': current['subsection'] if current else None,
+            'lastQuestionNumber': current['question_number'] if current else 0,
             'totalWeakAreas': len(weak_areas),
             'totalStrongAreas': len(strong_subsections)
         }
